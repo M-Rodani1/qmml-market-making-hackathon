@@ -186,8 +186,8 @@ cash = STARTING_CASH
 all_predictions = {}
 
 for i in range(1, 10):
-    train = pd.read_csv(f'stock_{i}_train.csv')
-    test = pd.read_csv(f'stock_{i}_test.csv')
+    train = pd.read_csv(f'data/stock_{i}_train.csv')
+    test = pd.read_csv(f'data/stock_{i}_test.csv')
 
     prediction, rmse, r2 = build_predictor(i, train, test)
     shares, tier = get_shares(prediction, rmse, r2, cash, len(train))
