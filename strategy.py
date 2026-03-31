@@ -203,9 +203,9 @@ for i in range(1, 10):
         'tier': tier
     }
 
-print(f"\n{'='*85}")
+print(f"\n{'='*45}")
 print("LIVE DECISION CHEAT SHEET")
-print("="*85)
+print("="*45)
 print(f"\nWhen MM quotes are revealed each round:\n")
 
 for i in range(1, 10):
