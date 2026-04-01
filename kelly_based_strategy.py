@@ -139,7 +139,6 @@ def get_kelly_size(p_win, prediction, mm_price, rmse, current_cash, k, profile='
     suggested_shares = (safe_f * current_cash) / mm_price
     return np.clip(suggested_shares, MIN_SHARES, MAX_SHARES)
 
-# also can consider maximising expected utility
 # =============================================================================
 # script
 # =============================================================================
