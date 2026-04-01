@@ -14,7 +14,7 @@ Final standings after 9 rounds:
 | **2** | **AlphaBetaPhi** | **£305,727** | **+£205,727** |
 | 3 | Uncs Republic | £292,246 | +£192,246 |
 
-Gap to 1st: £1,153
+Gap to 1st: £1,153 — a **0.38%** difference. One slightly different sizing decision on one round.
 
 ## Competition Format
 
