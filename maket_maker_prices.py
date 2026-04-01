@@ -36,7 +36,10 @@ def build_predictor(stock_id, train, test):
     config = STOCK_CONFIGS[stock_id]
 
     if config['model'] == 'mean':
-        return y.mean(), y.std()
+        prediction = y.mean()
+        rmse = y.std()
+        residuals = y - prediction
+        return prediction, rmse, residuals
 
     if config['features'] == 'all':
         feat_cols = list(X.columns)
@@ -63,7 +66,9 @@ def build_predictor(stock_id, train, test):
     model.fit(X_clean, y)
     prediction = np.clip(model.predict(test_clean)[0], y.min(), y.max())
 
-    return prediction, rmse
+    residuals = y - model.predict(X_clean)
+
+    return prediction, rmse, residuals
 
 # =============================================================================
 # market maker price generation
@@ -104,12 +109,12 @@ def get_mm_quotes(prediction, rmse, n_rows):
         }
     return quotes
 
-def get_mm_quotes_advanced(prediction, rmse, train_targets, n_rows):
+def get_mm_quotes_advanced(prediction, rmse, residuals, n_rows):
     """
     Generates Bid/Ask quotes adjusted for Skewness (bias) and Kurtosis (fat tails).
     """
-    s = skew(train_targets)
-    k = kurtosis(train_targets)
+    s = skew(residuals)
+    k = kurtosis(residuals)
     
     # If skew is positive, outliers are to the upside -> shift quotes slightly higher.
     # If skew is negative, outliers are to the downside -> shift quotes slightly lower.
@@ -119,7 +124,7 @@ def get_mm_quotes_advanced(prediction, rmse, train_targets, n_rows):
     # If k > 1, the tails are 'fat'. We widen the spread to protect against outliers.
     k_buffer = 1.0
     if k > 1:
-        k_buffer = 1 + (np.log1p(k) * 0.2) # Dampened scaling for high kurtosis
+        k_buffer = 1 + (np.log1p(k) * 0.2)
 
     profiles = {
         '2 stds': 2.00,
@@ -135,7 +140,7 @@ def get_mm_quotes_advanced(prediction, rmse, train_targets, n_rows):
     
     quotes = {}
     dof = n_rows - 1
-    dist = t(df=dof, loc=prediction, scale=rmse) if n_rows < 100 else norm(loc=prediction, scale=rmse)
+    dist = t(df=dof, loc=prediction, scale=rmse * k_buffer) if n_rows < 100 else norm(loc=prediction, scale=rmse * k_buffer)
 
     for name, mult in profiles.items():
         half_width = mult * rmse * k_buffer
@@ -171,10 +176,10 @@ while True:
         i = int(stock_input)
         train = pd.read_csv(f'data/stock_{i}_train.csv')
         test = pd.read_csv(f'data/stock_{i}_test.csv')
-        pred, rmse = build_predictor(i, train, test)
+        pred, rmse, residuals = build_predictor(i, train, test)
         
         mm_options = get_mm_quotes(pred, rmse, len(train))
-        mm_options2 = get_mm_quotes_advanced(pred, rmse, train['target'], len(train))
+        mm_options2 = get_mm_quotes_advanced(pred, rmse, residuals, len(train))
 
         first_key = list(mm_options2.keys())[0]
         print(f"Stats -> Skew: {mm_options2[first_key]['skew']:.2f} | Kurtosis: {mm_options2[first_key]['kurt']:.2f}")  
