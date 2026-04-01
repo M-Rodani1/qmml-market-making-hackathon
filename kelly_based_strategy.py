@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import cross_val_score
-from scipy.stats import norm, t
+from scipy.stats import norm, t, skew, kurtosis
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -36,7 +36,10 @@ def build_predictor(stock_id, train, test):
     config = STOCK_CONFIGS[stock_id]
 
     if config['model'] == 'mean':
-        return y.mean(), y.std()
+        prediction = y.mean()
+        rmse = y.std()
+        residuals = y - prediction
+        return y.mean(), y.std(), residuals
 
     # Feature selection
     if config['features'] == 'all':
@@ -66,54 +69,67 @@ def build_predictor(stock_id, train, test):
     model.fit(X_clean, y)
     prediction = np.clip(model.predict(test_clean)[0], y.min(), y.max())
 
-    return prediction, rmse
+    residuals = y - model.predict(X_clean)
+
+    return prediction, rmse, residuals
 
 # =============================================================================
 # confidence probabilites
 # =============================================================================
-def get_market_probabilities(prediction, rmse, mm_bid, mm_ask, n_rows):
+def get_market_probabilities(prediction, rmse, mm_bid, mm_ask, n_rows, residuals):
     """
     Calculates probabilities using T-Distribution for small samples 
     and Normal Distribution for large samples.
     """
+    s = skew(residuals)
+    k = kurtosis(residuals)
+
+    # Increase uncertainty if model residuals are fat-tailed (High Kurtosis)
+    k_adj_rmse = rmse * (1 + (max(0, k-3) * 0.2))
+    skew_adj_pred = prediction + (s * 0.1 * rmse)
+
     dof = n_rows - 1
 
     if n_rows < 100:
-        dist = t(df=dof, loc=prediction, scale=rmse)
+        dist = t(df=dof, loc=skew_adj_pred, scale=k_adj_rmse)
         dist_type = f"T-Dist (df={dof})"
     else:
-        dist = norm(loc=prediction, scale=rmse)
+        dist = norm(loc=skew_adj_pred, scale=k_adj_rmse)
         dist_type = "Normal Dist"
 
     prob_lower = dist.cdf(mm_bid)
     prob_higher = 1 - dist.cdf(mm_ask)
     prob_inside = dist.cdf(mm_ask) - dist.cdf(mm_bid)
     
-    return prob_lower, prob_higher, prob_inside, dist_type
+    return prob_lower, prob_higher, prob_inside, dist_type, s, k
 
 # =============================================================================
 # market bet size
 # =============================================================================
-def get_kelly_size(p_win, prediction, mm_price, rmse, current_cash, profile='conservative'):
+def get_kelly_size(p_win, prediction, mm_price, rmse, current_cash, k, profile='conservative'):
     """Calculates optimal position sizing based on risk profile."""
     if p_win <= 0.50:
         return MIN_SHARES
     
     q = 1 - p_win
     gain = abs(prediction - mm_price)
-    loss = rmse
+    loss = rmse * (1 + (max(0, k-3) * 0.2))
+
+    b = gain / max(loss, 0.01)
+
+    # kelly formula
+    kelly_f = p_win - (q / b)
 
     if profile == 'conservative':
-        loss, multiplier = rmse, 0.5    # half-kelly, professional fund manager approach
+        multiplier = 0.5 # half kelly, fund manager approach
     elif profile == 'aggressive':
-        loss, multiplier = rmse, 1.0    # full-kelly, Full RMSE risk
+        multiplier = 1.0    # full-kelly, Full RMSE risk
     elif profile == 'super aggressive':
         loss, multiplier = rmse * 0.4, 1.0  # full-kelly and ignores 60% of noise
 
-    b = gain / max(loss, 0.01)
-    
-    # kelly criteria formula
-    kelly_f = p_win - (q / b)
+    if k > 5:
+        print("very fat tails, taking extra caution...")
+        multiplier *= 0.5
     
     safe_f = kelly_f * multiplier
     
@@ -147,7 +163,7 @@ while True:
         train = pd.read_csv(f'data/stock_{i}_train.csv')
         test = pd.read_csv(f'data/stock_{i}_test.csv')
         n_rows = len(train)
-        pred, rmse = build_predictor(i, train, test)
+        pred, rmse, residuals = build_predictor(i, train, test)
 
         print(f"\nSTOCK {i} ANALYSIS:")
         print(f"Model Prediction: {pred:.2f} | Model RMSE: {rmse:.2f}")
@@ -157,7 +173,7 @@ while True:
         m_ask = float(input(f"  Enter MM ASK for Stock {i}: "))
 
         # get confidence probabilities
-        lower, higher, inside, dist_type = get_market_probabilities(pred, rmse, m_bid, m_ask, n_rows)
+        lower, higher, inside, dist_type, s, k = get_market_probabilities(pred, rmse, m_bid, m_ask, n_rows, residuals)
 
         if higher > lower:
             p_win = higher
@@ -168,11 +184,12 @@ while True:
             mm_price = m_bid
             direction = "SELL"
         
-        size_con = get_kelly_size(p_win, pred, mm_price, rmse, cash, 'conservative')
-        size_agg = get_kelly_size(p_win, pred, mm_price, rmse, cash, 'aggressive')
-        size_super_agg = get_kelly_size(p_win, pred, mm_price, rmse, cash, 'super aggressive')
+        size_con = get_kelly_size(p_win, pred, mm_price, rmse, cash, k,  'conservative')
+        size_agg = get_kelly_size(p_win, pred, mm_price, rmse, cash, k,  'aggressive')
+        size_super_agg = get_kelly_size(p_win, pred, mm_price, rmse, cash, k, 'super aggressive')
 
         print("-" * 45)
+        print(f"  Skew: {s:.2f} | Kurtosis: {k:.2f}")
         print(f"  Calculation Method: {dist_type} | Edge: {p_win:.1%}")
         print("-" * 45)
         print(f"  Probability TRUE value is LOWER than Bid:  {lower:.3%}")
