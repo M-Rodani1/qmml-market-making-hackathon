@@ -18,7 +18,7 @@ Gap to 1st: £1,153 — a **0.38%** difference. One slightly different sizing de
 
 ## Competition Format
 
-The QMML Market Making Hackathon (25 Mar – 1 Apr 2026) was a 9-round live trading competition hosted by the Machine Learning Society at Queen Mary University of London. Each round:
+The QMML Market Making Hackathon was a 9-round live trading competition hosted by the Machine Learning Society at Queen Mary University of London. Each round:
 
 1. Teams receive a dataset with features and a target (hidden stock price)
 2. Teams train a model and submit a **bid** and **ask** price
