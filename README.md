@@ -102,7 +102,7 @@ python market_maker_prices.py
 ## Team
 
 - **Mohamed Rodani** — prediction models, strategy design, sizing logic, rounds 1/3/5/7/9
-- **Kieran Cook** — EDA, feature engineering, Kelly criterion implementation, rounds 2/4/6/8
+- **Kieran Cooke** — EDA, feature engineering, Kelly criterion implementation, rounds 2/4/6/8
 
 ## Tech Stack
 
